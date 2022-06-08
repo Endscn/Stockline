@@ -1,0 +1,364 @@
+
+# 집값 예측 프로그램을 이용해서 주식 예측 프로그램을 만들어보자
+
+
+# from keras.datasets import boston_housing
+# (train_data, train_targets), (test_data, test_targets) = boston_housing.load_data() # 예제에서 사용한 데이터
+# 기존의 데이터 타입은 np.ndarray
+
+def build_model(): #동일한 모델을 여러 번 생성할 것이므로 함수를 만들어 사용합니다.
+    model = models.Sequential()
+    model.add(layers.Dense(64, activation='relu',
+                           input_shape=(train_data.shape[1],)))
+    model.add(layers.Dense(64, activation='relu'))
+    model.add(layers.Dense(1))
+    model.compile(optimizer='adam', loss='mse', metrics=['mae'])
+    return model
+
+#내가 사용할 데이터
+import yfinance as yf
+from datetime import datetime
+
+tickerSymbol = 'TSLA'
+
+#get data on this ticker
+tickerData = yf.Ticker(tickerSymbol)
+
+#get the historical prices for this ticker
+tickerDf = tickerData.history(period='1d', start='2011-01-01', end=datetime.today())
+
+# train_data & train_targets 설정
+train_data = tickerDf.drop(['Dividends','Stock Splits'],axis=1)[:-1]
+print(train_data)
+print(train_data.shape)
+print(type(train_data))
+
+train_data = train_data.to_numpy()
+print(train_data)
+print(train_data.shape)
+print(type(train_data))
+
+
+train_targets = tickerDf["Open"][1:]
+print(train_targets)
+print(train_targets.shape)
+print(type(train_targets))
+
+train_targets = train_targets.to_numpy()
+
+# test_data & test_targets 설정
+tickerSymbol = 'MSFT'
+
+#get data on this ticker
+tickerData = yf.Ticker(tickerSymbol)
+
+#get the historical prices for this ticker
+tickerDf = tickerData.history(period='1d', start='2020-01-01', end=datetime.today())
+
+test_data = tickerDf.drop(['Dividends','Stock Splits'],axis=1)[:-1]
+print(test_data)
+print(test_data.shape)
+test_data = test_data.to_numpy()
+
+test_targets = tickerDf["Open"][1:]
+print(test_targets)
+print(test_targets.shape)
+test_targets = test_targets.to_numpy()
+
+print(train_data.shape, train_targets.shape)
+print(test_data.shape, test_targets.shape)
+
+# 정규화 시켜주기
+mean = train_data.mean(axis=0)
+train_data -= mean
+std = train_data.std(axis=0)
+train_data /= std
+
+test_data -= mean
+test_data /= std
+
+import time
+from keras import models
+from keras import layers
+import numpy as np
+
+
+"""
+start = time.time()
+
+k = 4
+
+num_val_samples = len(train_data) // k
+num_epochs = 100
+all_scores = []
+for i in range(k):
+    print('처리중인 폴드 #', i)
+    val_data = train_data[i * num_val_samples: (i + 1) * num_val_samples]  # 검증 데이터 준비: k번째 분할
+    print(val_data.shape)
+    val_targets = train_targets[i * num_val_samples: (i + 1) * num_val_samples]
+    print(val_targets.shape)
+    partial_train_data = np.concatenate(  # 훈련 데이터 준비: 다른 분할 전체
+        [train_data[:i * num_val_samples],
+         train_data[(i + 1) * num_val_samples:]],
+        axis=0)
+    partial_train_targets = np.concatenate(
+        [train_targets[:i * num_val_samples],
+         train_targets[(i + 1) * num_val_samples:]],
+        axis=0)
+
+print(time.time() - start ,"초 소요")
+
+
+
+start = time.time()
+
+model = build_model()  # 케라스 모델 구성(컴파일 포함)
+
+model.fit(partial_train_data, partial_train_targets,  # 모델 훈련(verbose=0이므로 훈련 과정이 출력되지 않습니다.)
+          epochs=num_epochs, batch_size=1, verbose=1)
+
+val_mse, val_mae = model.evaluate(val_data, val_targets, verbose=0)  # 검증 세트로 모델 평가
+print(val_data)
+print(val_targets)
+all_scores.append(val_mae)
+
+print(all_scores)
+
+print(time.time() - start ,"초 소요") # 현재 100회 반복에 123초 소요됨
+
+
+
+start = time.time()
+# --------오래 훈련하고 점수 로그에 저장하기
+num_epochs = 500
+all_mae_histories = []
+
+for i in range(k):
+    print('처리중인 폴드 #', i)
+    val_data = train_data[i * num_val_samples: (i + 1) * num_val_samples]  #검증 데이터 준비: k번째 분할    val_targets = train_targets[i * num_val_samples: (i + 1) * num_val_samples]
+    partial_train_data = np.concatenate(  # 훈련 데이터 준비: 다른 분할 전체
+        [train_data[:i * num_val_samples],
+         train_data[(i + 1) * num_val_samples:]],
+        axis=0)
+    partial_train_targets = np.concatenate(
+        [train_targets[:i * num_val_samples],
+         train_targets[(i + 1) * num_val_samples:]],
+        axis=0)
+
+model = build_model()  # 케라스 모델 구성(컴파일 포함)
+history = model.fit(partial_train_data, partial_train_targets,  # 모델 훈련(verbose=0이므로 훈련 과정이 출력되지 않습니다.)
+                    validation_data=(val_data, val_targets),
+                    epochs=num_epochs, batch_size=1, verbose=1)
+mae_history = history.history['val_mean_absolute_error']
+all_mae_histories.append(mae_history)
+
+# 모든 폴드에 대해 에포크의 mae 점수 평균 계산하고 그래프로 나타내기
+average_mae_history = [np.mean([x[i] for x in all_mae_histories]) for i in range(num_epochs)]
+
+import matplotlib.pyplot as plt
+
+plt.plot(range(1, len(average_mae_history) + 1), average_mae_history)
+plt.xlabel('Epochs')
+plt.ylabel('Validation MAE')
+plt.show()
+
+print(time.time()-start,"초 소요") # 평균 320초 소요
+
+
+# 그래프가 너무 범위가 크고 변동이 심하므로 지수이동평균 사용
+def smooth_curve(points, factor=0.9):
+    smoothed_points = []
+    for point in points:
+        if smoothed_points:
+            previous = smoothed_points[-1]
+            smoothed_points.append(previous * factor + point * (1 - factor))
+        else:
+            smoothed_points.append(point)
+    return smoothed_points
+
+smooth_mae_history = smooth_curve(average_mae_history[10:])
+
+plt.plot(range(1, len(smooth_mae_history) + 1), smooth_mae_history)
+plt.xlabel('Epochs')
+plt.ylabel('Validation MAE')
+plt.show()
+
+# 이 그래프를 보면 대충 50~60 에포크 이후 증가한다 이것을 이용해서 새롭게 모델을 컴파일
+start = time.time()
+model = build_model()  # 새롭게 컴파일된 모델을 얻습니다.
+model.fit(train_data, train_targets,  # 전체 데이터로 훈련시킵니다.
+          epochs=400, batch_size=16, verbose=1)
+
+from keras.models import load_model
+model.save('ALL_TSLA_model.h5')
+
+test_mse_score, test_mae_score = model.evaluate(test_data, test_targets)
+
+print(time.time() - start, "초 소요") # alltsla==91초 소요
+
+print(test_mae_score) # 테스트는 4.0정도 나옴
+# = 2.5786443972120097 으로 아직도 2,578달러 정도의 차이가 난다 이게 낮을수록 좋은데 너무 과적합되지않을정도로 판단해보자
+
+# 문제점 1. 테스트 데이터셋과 트레이닝 셋이 다르다 지금 현재는 테슬라로 학습하고 마소 테이터로 테스트를 하는 상황 이것을 어떻게 처리할지 생각해보자
+# 문제점 2. 그래프를 보고 인간의 광기가 들어간 시점을 기준으로 양쪽으로 나눠서 학습하는것은 어떨까? 인간의 광기가 적용된 시점에는 가격 범위가 너무커지거나 예측이 너무 범위를 벗어나는 경우가 있다.
+# 문제점 2-1. 인간의 광기가 들어간 전,후의 mean과 std 과 확연히 차이가 나므로 이것을 생각해야 할 필요가 있다.
+
+
+"""  # 모델 만드는 과정
+
+
+
+# --------------------------------------모델 불러서 바로 사용해보기 트레인 테스트 정보는 미리 입력해주자
+import yfinance as yf
+
+import time
+from keras import models
+from keras import layers
+import numpy as np
+from keras.models import load_model #h5py 버전 3.1.0 맞춰줬더니 해결 모델 적용까지는 완료
+import matplotlib.pyplot as plt
+
+
+model = load_model('ALL_TSLA_model.h5')
+
+
+# ---------------------------------------------------------------하나의 정보 끌어서 써보기 (predict)
+want_date = "2022-06-03"
+real_date = "2022-06-04"
+
+tickerSymbol = 'tsla'
+tickerData = yf.Ticker(tickerSymbol)
+today_data = tickerData.history(period='1d', start=want_date, end=want_date)
+today_data = today_data.drop(['Dividends','Stock Splits'],axis=1)
+today_close = today_data["Close"][0]
+
+print('오늘의 주가')
+print(today_data)
+
+today_data = today_data.to_numpy()
+
+# 정규화 해주기 이걸 조금 조정해야할지도??------------------------------------------ (1
+today_data -= mean
+today_data /= std
+
+gap = model.predict(today_data)
+real_data = tickerData.history(period="1d",start=real_date,end=real_date)
+real_data = real_data.drop(['Dividends','Stock Splits'], axis=1)
+
+print("내일의 주가")
+print(real_data)
+print("예측 Open값 :",gap[0][0])
+
+if gap[0][0]>today_close:
+    print("오늘 마감대비 내일 오른다.")
+elif gap[0][0]==today_close:
+    print("오늘 마감대비 똑같이 시작한다.")
+else:
+    print("오늘 마감대비 내일 떨어진다.")
+
+print("실제 Open값 :",real_data["Open"][0])
+
+
+
+# -----------------------------------------------------------------범위로 다 끌어와서 그림을 그려보자
+
+# from datetime import datetime 이랑 그냥 import datetime 이랑 다르다 왜다르지?
+import datetime
+start_date = datetime.date(2019, 7, 1)
+# print(start_date)
+end_date = datetime.date(2019, 7, 15)
+# print(end_date)
+
+# start_date = "2019-05-01"
+# end_date = "2019-08-04"
+
+delta_date = start_date - end_date
+print(delta_date)
+
+tickerSymbol = 'tsla'
+tickerData = yf.Ticker(tickerSymbol)
+range_data = tickerData.history(period='1d', start=start_date, end=end_date)
+
+# plot 만들어서 나중에 보기위함
+range_plot = range_data["Open"]
+range_plot2 = range_data["Open"]
+range_plot = range_plot.to_numpy()
+
+range_data = range_data.drop(['Dividends','Stock Splits'],axis=1)
+print(range_data)
+
+range_data = range_data.to_numpy()
+
+print(len(range_data))
+
+
+# target의 데이터로 따로 정규화 해주기
+import datetime
+now = datetime.datetime.now()
+yesterday = now - datetime.timedelta(days=1)
+now_before_365 = now - datetime.timedelta(days=1000)
+print(now_before_365)
+
+target_data = tickerData.history(period='1d',start=now_before_365, end=yesterday)
+target_data = target_data.drop(['Dividends','Stock Splits'],axis=1)
+print(target_data)
+
+optimal_mean = target_data.mean(axis=0)
+optimal_std = target_data.std(axis=0)
+
+#정규화 해주기
+range_data -= mean
+# range_data -= optimal_mean
+range_data /= std
+# range_data /= optimal_std
+
+import pandas as pd
+range_gap = model.predict(range_data)
+range_dataFrame = pd.DataFrame(range_gap)
+print(range_dataFrame)
+
+x = [x for x in range(len(range_data))]
+
+# range_plot = 진짜 데이터 모음
+# range_dataFrame = 예측 데이터 모음
+plt.plot(range_plot,color='#e35f62',label="Real_data")
+plt.plot(range_dataFrame,color='forestgreen',label='Predict_data')
+
+# plt.scatter(x,range_plot,color='#e35f62',label="Real_data")
+# plt.scatter(x,range_dataFrame,color='forestgreen',label='Predict_data')
+# plt.scatter(range_plot2,range_dataFrame)
+
+plt.title("Real Data vs Predict Data")
+plt.legend()
+plt.show()
+print(range_plot2)
+print(range_dataFrame)
+
+
+# 22년 6월 7일
+# 1. 그래프를 어떻게 비슷한것을 찾아낼지 다시한번 생각중
+# 2. 아무래도 기존에 데이터 처럼 CBIR을 이용해서 처리하는 방법을 한번 생각해보자
+# 3. 일단 사이트를 개설하는 일은 나중으로 미루자
+# 4. 심플렉스법으로 그래프간의 길이를 최소화 하는 방법도 생각해봤지만 별로인거같기도하고
+# 5. 오늘은 여기까지
+
+
+
+#
+# # 둘의 차이를 빼서 리스트에 저장한 후 데이터 프레임으로 만들어서 플롯으로 그려보기
+# print(len(range_plot)) # = 503
+#
+# range_plot = pd.DataFrame(range_plot)
+# print(range_plot)
+# # 이거쓰면 터진다.
+#
+# # subtract_list = []
+# # for i in range(92):
+# #     temp = range_plot.iloc[i] - range_dataFrame.iloc[i]
+# #     subtract_list.append(temp)
+# # print(subtract_list)
+#
+# plt.plot(subtract_list,color="forestgreen")
+
+
+#------------------------------------------------------------------------------
