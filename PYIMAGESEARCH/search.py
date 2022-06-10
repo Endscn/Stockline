@@ -34,5 +34,5 @@ for (score, resultID) in results:
     cv2.imshow("Result", result)
     cv2.waitKey(0)
 
-# 터미널에서 수행
+# 터미널에서 수행ㄱ
 # $ python search.py --index index.csv --query queries/108100.png --result-path dataset
